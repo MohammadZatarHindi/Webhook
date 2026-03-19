@@ -88,10 +88,25 @@ This release upgrades the system from a simple webhook receiver to a full **asyn
 - Worker crash on failed delivery
 - Database connection handling
 
----
-
 ## [Unreleased]
 - Docker support
 - CI/CD (GitHub Actions)
 
 ---
+
+## [v0.4.0] - 2026-03-19
+### Docker & CI/CD
+- Added **Docker & Docker Compose** support for API, worker, Postgres, and Redis
+- CI/CD GitHub Actions workflow added:
+  - Builds TypeScript
+  - Spins up Postgres + Redis
+  - Seeds test pipeline, subscriber, and job
+  - Runs worker
+  - Verifies jobs processed successfully
+- No formal test files required; workflow acts as **functional smoke test**
+
+---
+
+## [Unreleased]
+- Clean The Mess
+- Enhance & Do Clean Code

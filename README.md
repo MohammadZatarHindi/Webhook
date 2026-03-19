@@ -250,7 +250,7 @@ curl -X POST http://localhost:3000/api/pipelines/1/subscribers \
   -H "Content-Type: application/json" \
   -d '{
     "pipeline_id": 1,
-    "url": "http://localhost:3000/mock-subscriber"
+    "url": "http://app:3000/mock-subscriber"
 }'
 ```
 
