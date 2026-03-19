@@ -1,0 +1,64 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: raelagww
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: webhook_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raelagww -d webhook_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      # Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Build TypeScript
+      - name: Build project
+        run: npm run build
+
+      # Run worker in background
+      - name: Run worker
+        run: npm run worker &
+        env:
+          DATABASE_URL: postgresql://raelagww:root@localhost:5432/webhook_db
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      # Optionally run tests here
+      - name: Run tests
+        run: npm test

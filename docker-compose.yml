@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  # Main API
+  app:
+    build: .
+    container_name: webhook_app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    command: ["node", "dist/index.js"]
+
+  # Worker for queue processing
+  worker:
+    build: .
+    container_name: webhook_worker
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    command: ["npm", "run", "worker"]
+
+  # PostgreSQL database
+  db:
+    image: postgres:15
+    container_name: webhook_db
+    restart: always
+    environment:
+      POSTGRES_USER: raelagww
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: webhook_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  # Redis service
+  redis:
+    image: redis:7
+    container_name: webhook_redis
+    ports:
+      - "6379:6379"
+
+# Top-level named volumes mapping (do not include file mounts here)
+volumes:
+  postgres_data:
