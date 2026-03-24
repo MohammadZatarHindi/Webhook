@@ -1,54 +1,31 @@
 // Load environment variables from .env file
-import 'dotenv/config';
-import express from "express";
+import "dotenv/config";
 
-// Import module routes
-import pipelineRoutes from "./modules/pipelines/pipelines.routes";
-import webhookRoutes from "./modules/webhooks/webhooks.routes";
-import subscribersRoutes from "./modules/subscribers/subscribers.routes";
-import jobsRoutes from "./modules/jobs/jobs.routes";
+// Import the main Express app instance
+import app from "./app";
 
-const app = express();
+// Import route modules for different features of the application
+import pipelineRoutes from './modules/pipelines/routes/pipeline.route';
+import subscriberRoutes from './modules/subscribers/routes/subscriber.route';
+import subscribtionRoutes from './modules/subscribtions/routes/subscribtion.route';
+import jobRoutes from './modules/jobs/routes/job.route';
+import deliveryRoutes from './modules/deliveries/routes/delivery.route';
+import webhookRoutes from './modules/webhooks/routes/webhook.route';
 
-console.log("Starting Webhook Pipeline Service...");
+// Mount the webhook routes under '/webhooks' endpoint
+app.use('/webhooks', webhookRoutes);
 
-// Middleware to parse incoming JSON requests
-app.use(express.json());
-
-// Health check / root endpoint
-app.get("/", (_req, res) => {
-  res.send("Webhook Pipeline Service Running");
-});
-
-// Mount module routes
-app.use("/api/pipelines", pipelineRoutes);
-app.use("/api/webhooks", webhookRoutes);
-app.use("/api/subscribers", subscribersRoutes); // NEW
-app.use("/api/jobs", jobsRoutes);               // NEW
-
-app.use("/api/pipelines/:pipelineId/subscribers", subscribersRoutes);
-
-// Global error handler middleware
-app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal Server Error" });
-});
-
-// Use PORT from environment or fallback to 3000
+// Set the port from environment variable, default to 3000 if not provided
 const PORT = process.env.PORT || 3000;
 
-// Start the server
+// Mount the other routes for different modules
+app.use('/pipelines', pipelineRoutes);       // Handles all pipeline-related requests
+app.use('/subscribers', subscriberRoutes);   // Handles subscriber-related requests
+app.use('/subscribtions', subscribtionRoutes); // Handles subscription-related requests (note the typo in folder name)
+app.use('/jobs', jobRoutes);                 // Handles job-related requests
+app.use('/deliveries', deliveryRoutes);     // Handles delivery-related requests
+
+// Start the Express server and listen on the specified port
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-// Optional: initialize worker if you want it to run in same process
-// import { processJobs } from "./worker/worker";
-// setInterval(processJobs, 3000);  // every 3 seconds
-
-app.post("/mock-subscriber", (req, res) => {
-  console.log("Mock subscriber received payload:", req.body);
-  res.status(200).json({ received: true });
-});
-
-export default app;

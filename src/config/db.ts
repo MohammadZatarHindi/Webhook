@@ -1,19 +1,28 @@
-import { Pool } from "pg";
+import { Pool } from 'pg';
+import 'dotenv/config';
 
-// Ensure the DATABASE_URL environment variable is defined
-// This prevents the app from starting with an invalid configuration
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is not defined");
-}
-
-// Create a PostgreSQL connection pool
-// Uses a single connection string for flexibility (local + cloud environments)
+/**
+ * PostgreSQL connection pool
+ * ---------------------------
+ * Uses DATABASE_URL from environment variables to connect to the database.
+ * Pool allows multiple queries to run concurrently and efficiently.
+ */
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL, // Connection string from .env
 });
 
-// Test the database connection on startup
-// Helps detect configuration issues early
-pool.connect()
-  .then(() => console.log("Connected to database"))
-  .catch((err) => console.error("Database connection error", err));
+/**
+ * Optional connection test (development only)
+ * --------------------------------------------
+ * Checks if the pool can successfully connect to the database
+ * Logs connection status for debugging.
+ */
+if (process.env.NODE_ENV !== 'production') {
+  pool
+    .connect()
+    .then(client => {
+      console.log('Connected to PostgreSQL database'); // Success message
+      client.release(); // Release the client back to the pool
+    })
+    .catch(err => console.error('PostgreSQL connection error:', err)); // Log errors
+}

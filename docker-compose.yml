@@ -1,52 +1,72 @@
-version: "3.9"
+version: '3.9'
 
 services:
-  # Main API
-  app:
+  api:
     build: .
-    container_name: webhook_app
+    container_name: webhook_api
+    restart: always
     ports:
       - "3000:3000"
     env_file:
       - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
     depends_on:
       - db
       - redis
-    command: ["node", "dist/index.js"]
 
-  # Worker for queue processing
   worker:
     build: .
     container_name: webhook_worker
+    restart: always
+    # 'tail -f /dev/null' keeps the container running but idle
+    command: tail -f /dev/null
     env_file:
       - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
     depends_on:
       - db
       - redis
-    command: ["npm", "run", "worker"]
-
-  # PostgreSQL database
+    
+  subscriber:
+    build: .
+    container_name: webhook_subscriber
+    restart: always
+    # Stays idle so you can start it manually
+    command: tail -f /dev/null
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - api
+      
   db:
-    image: postgres:15
-    container_name: webhook_db
+    image: postgres:16
+    container_name: webhook_postgres
     restart: always
     environment:
-      POSTGRES_USER: raelagww
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: webhook_db
+      - POSTGRES_USER=mohammad
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=webhook_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
-  # Redis service
   redis:
     image: redis:7
     container_name: webhook_redis
+    restart: always
     ports:
       - "6379:6379"
 
-# Top-level named volumes mapping (do not include file mounts here)
 volumes:
   postgres_data:

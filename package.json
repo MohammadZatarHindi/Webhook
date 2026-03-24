@@ -1,34 +1,40 @@
 {
-  "name": "foot-hill-intership-final-project(webhook)",
+  "name": "webhook-remake",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev src/index.ts",
-	"worker": "ts-node-dev src/worker/worker.ts",
-	"build": "tsc"
+    "worker": "ts-node-dev src/worker/worker.ts",
+    "build": "tsc",
+    "start": "ts-node-dev src/index.ts",
+    "migrate": "node-pg-migrate",
+	"lint": "eslint src"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "bullmq": "^5.71.0",
-    "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "ioredis": "^5.10.0",
+    "express-validator": "^7.3.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
-    "@types/node-fetch": "^2.6.13",
     "@types/pg": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
+    "node-pg-migrate": "^8.0.4",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.2"
   }
 }

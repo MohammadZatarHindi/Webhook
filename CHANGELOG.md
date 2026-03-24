@@ -4,24 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [v0.1] - 2026-03-17
-- Initial pipelines module implemented
-- POST /api/pipelines & GET /api/pipelines endpoints
-- TypeScript interfaces (`Pipeline`, `ActionType`)
-- Zod input validation
-- PostgreSQL integration (`pipelines` table)
-- README.md, .gitignore, .env.example added
+## [v0.4.0] - 2026-03-24
+
+###Major Update: Production Readiness & Architectural Refactoring
+
+This release transforms the system into a robust, "Modular Monolith" with a professional-grade technical foundation and containerized orchestration.
 
 ---
 
-## [v0.2] - 2026-03-18
-- Webhooks module implemented
-- `webhooks` table added in PostgreSQL
-- POST /api/webhooks endpoint to receive and store webhooks
-- Manual and HTTP tests verified
-- Status tracking (`pending`, `processed`, `failed`) added
-- JSONB payload storage for flexible webhook data
-- Optional extras discussed: validation, security, indexing, cleanup
+### Added
+
+- Programmatic Migration Engine: Integrated a migration CLI to handle database schema evolution.
+
+- Versioned Schema Control: Added up (apply changes) and down (rollback changes) migration scripts to ensure all team members and environments (Docker/CI) stay in sync.
+
+- Migration History: The system now tracks applied migrations in a migrations metadata table, preventing duplicate executions.
+
+- Many-to-Many (M-M) Fan-out: Implemented the subscriptions join table to allow a single pipeline to broadcast data to multiple subscribers simultaneously.
+
+- Docker Orchestration: Full Dockerfile and docker-compose.yml integration for a one-click "API + Worker + DB" environment.
+
+- Generic Data Access Layer (DAL): Implemented genericQueries.ts to abstract PostgreSQL CRUD operations, reducing boilerplate across all modules.
+
+- Global Error Strategy: - Custom AppError class for operational error handling.
+
+- catchAsync utility to eliminate repetitive try/catch blocks.
+
+- Environment Validation: Integrated Zod-based validation for .env variables at startup.
+
+- Graceful Shutdown: Implemented SIGTERM/SIGINT handlers to ensure the PostgreSQL pool closes cleanly and the worker finishes its heartbeat before exiting.
+
+- Audit Trail: Expanded the deliveries table to log granular HTTP status codes and response bodies for every egress attempt.
+
+### Fixed
+
+- Relational Integrity: Updated SQL schema with ON DELETE CASCADE and strict Foreign Key constraints.
 
 ---
 
@@ -88,25 +105,25 @@ This release upgrades the system from a simple webhook receiver to a full **asyn
 - Worker crash on failed delivery
 - Database connection handling
 
-## [Unreleased]
-- Docker support
-- CI/CD (GitHub Actions)
+---
+
+## [v0.2] - 2026-03-18
+- Webhooks module implemented
+- `webhooks` table added in PostgreSQL
+- POST /api/webhooks endpoint to receive and store webhooks
+- Manual and HTTP tests verified
+- Status tracking (`pending`, `processed`, `failed`) added
+- JSONB payload storage for flexible webhook data
+- Optional extras discussed: validation, security, indexing, cleanup
 
 ---
 
-## [v0.4.0] - 2026-03-19
-### Docker & CI/CD
-- Added **Docker & Docker Compose** support for API, worker, Postgres, and Redis
-- CI/CD GitHub Actions workflow added:
-  - Builds TypeScript
-  - Spins up Postgres + Redis
-  - Seeds test pipeline, subscriber, and job
-  - Runs worker
-  - Verifies jobs processed successfully
-- No formal test files required; workflow acts as **functional smoke test**
+## [v0.1] - 2026-03-17
+- Initial pipelines module implemented
+- POST /api/pipelines & GET /api/pipelines endpoints
+- TypeScript interfaces (`Pipeline`, `ActionType`)
+- Zod input validation
+- PostgreSQL integration (`pipelines` table)
+- README.md, .gitignore, .env.example added
 
 ---
-
-## [Unreleased]
-- Clean The Mess
-- Enhance & Do Clean Code

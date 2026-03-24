@@ -1,118 +1,229 @@
-# Webhook Pipeline Service
+![CI Status](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/actions/workflows/ci.yml/badge.svg)
 
-A **Pipeline Service** built with **TypeScript**, **Express**, and **PostgreSQL**, with input validation via **Zod**.  
-This project allows creating and managing pipelines with predefined actions, and receiving webhooks.
+# Express-Powered Webhook Orchestrator
 
----
-
-## Features
-
-### Pipelines
-- Create pipelines with predefined actions:
-  - `log`
-  - `uppercase`
-  - `reverse`
-- Each pipeline processes incoming data differently
+A high-performance **Node.js** middleware service designed for asynchronous data transformation and delivery. Built with **Express.js**, **PostgreSQL** & **Docker**, 
+this system implements a Producer-Consumer architecture—using a dedicated background worker to decouple incoming webhook ingestion from heavy processing and delivery tasks.
 
 ---
 
-### Subscribers
-- Attach multiple subscriber URLs to a pipeline
-- Each processed job is delivered to all subscribers
-- Dynamic (not hardcoded)
+## Core Features
+
+### Extensible Processing Pipelines
+Create and manage data streams with modular transformation logic. Each pipeline is mapped to a specific action type, ensuring strict data handling:
+
+- **Transformation Suite:** Supports `log` (observability), `uppercase` (string manipulation), and `reverse` (data inversion).
+
+- **Isolated Processing:** Each pipeline operates independently, allowing unique configurations for different data sources.
 
 ---
 
-### Jobs / Events (Queue System)
-- Jobs are stored in the `events` table
-- Processed asynchronously by a worker
-- Status lifecycle:
-  - `pending` → `processing` → `success` / `failed`
+### Dynamic Subscriber Egress
+Manage where your processed data goes without hardcoding endpoints.
+
+- **One-to-Many Fan-out:** Attach multiple subscriber URLs to a single pipeline. A single incoming event can trigger multiple downstream deliveries.
+
+- **Dynamic Registration:** Add or remove subscribers via the API at runtime without restarting the Node.js services.
 
 ---
 
-### Retry Mechanism
-- Job retry (max 3 attempts)
-- Subscriber retry (max 3 attempts per subscriber)
-- Error tracking and logging
+### Granular Subscribtion Management
+The system uses a relational mapping to connect data sources to their destinations.
+
+- **Many-to-Many Architecture:** A single pipeline can broadcast to multiple subscribers, and a subscriber can be associated with multiple pipelines through the subscribtions layer.
+
+- **Target Isolation:** Subscribtions are managed as independent entities, allowing you to activate or deactivate specific delivery routes without deleting the underlying pipeline or subscriber data.
 
 ---
 
-### Worker System
-- Background worker processes jobs every 2 seconds
-- Applies pipeline actions
-- Sends results to subscribers
+### Persistent Job Queue (Event-Driven)
+Utilizes a **PostgreSQL-backed queue** to ensure that no data is lost during spikes in traffic.
+
+- **State Machine:** Every job follows a strict lifecycle: - `pending` → `processing` → `success` / `failed`.
+
+- **Asynchronous Execution:** By offloading work to the jobs table, the Express API remains non-blocking and highly responsive.
 
 ---
 
-### Database Design
+### High-Efficiency Background Worker
+A dedicated **Node.js process** that acts as the engine of the system:
 
-#### Pipelines
-- Stores pipeline definitions
+- **Optimized Polling:** A configurable `5`-second heartbeat ensures rapid task pickup while maintaining low CPU overhead.
 
-#### Subscribers
-- Stores webhook endpoints per pipeline
+- **Pipeline Execution:** Automatically applies the correct transformation (action) before attempting delivery to the subscriber list.
 
-#### Events (Jobs)
-- Stores queued jobs and execution state
+- **Graceful Termination:** Handles SIGTERM and SIGINT signals to ensure that the PostgreSQL pool is closed and the current worker heartbeat completes before the process exits, 
+preventing data corruption or leaked connections.
+
+---
+
+### Fault-Tolerant Retry Engine
+Built-in resilience for unstable network conditions or failing downstream services:
+
+- **Multi-Level Retries:** Both the core job processing and individual subscriber deliveries feature a `3`-attempt limit.
+
+- **Deep Observability:** Detailed error tracking and timestamps for every failed attempt are stored in the database for easy debugging.
+
+---
+
+### Database Architecture
+
+1. Configuration Layer
+- **pipelines:** The core definition of a data stream. It stores the action_type (e.g., log, uppercase, reverse) which determines how the Worker transforms the data.
+
+- **subscribers:** A registry of external webhook endpoints (URLs) that are eligible to receive processed data.
+
+- **subscriptions:** A join table that manages the Many-to-Many relationship between pipelines and subscribers. This allows one pipeline to "fan-out" data to multiple destinations.
+
+2. Execution & Queue Layer
+- **events (The Job Queue):** Acts as the persistent storage for the asynchronous pipeline. It stores the raw payload, current status (pending, processing, success, failed), and an attempts counter for the retry logic.
+
+- **deliveries (Audit Trail):** A granular log of every HTTP request made by the Worker. It records the HTTP Status Code and any response errors, ensuring full observability for debugging failed delivery attempts.
+
+---
+
+### Database Strategy & Schema Control
+The system's data integrity is managed through a centralized Source of Truth located in `src/db/schema.sql`.
+
+- **Idempotent Migrations:** The schema is designed to be easily reproducible. It includes IF NOT EXISTS logic and standard PostgreSQL constraints (Foreign Keys, Defaults, and Timestamps) to ensure a consistent environment across WSL, Docker, or Production.
+
+- **Relational Integrity:** By enforcing ON DELETE CASCADE and strict data types in the SQL layer, the database maintains its own health, reducing the burden on the Node.js application layer.
+
+- **Audit Readiness:** The schema explicitly separates "Configuration" (Pipelines/Subscribers) from "Execution" (Events/Deliveries), allowing for high-performance indexing and historical audit trails.
+
+---
+
+### Technical Foundation: Clean Code & Robustness
+To ensure the system is production-ready, I implemented a unified architectural layer that handles validation, error management, and database interaction:
+
+- **Type-Safe Validation & Error Handling:** The system uses Zod for strict schema validation at the middleware level. To keep the controllers clean and DRY (Don't Repeat Yourself), 
+I developed a catchAsync wrapper. This higher-order function eliminates the need for repetitive try/catch blocks in every controller; it automatically catches asynchronous errors and forwards them to a centralized Global Error Middleware and a custom AppError class.
+
+- **Generic Data Access Layer:** To optimize database interactions and reduce boilerplate, I built a genericQueries.ts utility. 
+This layer abstracts common PostgreSQL CRUD operations, providing a consistent interface for all modules (Pipelines, Jobs, Subscribers). This, 
+combined with a centralized dbErrorHandler, ensures that database-level exceptions (like unique constraint violations) are gracefully transformed into meaningful API responses.
+
+- **Type-Safe Environment Config:** The application validates .env variables at startup using Zod, 
+ensuring the server never starts with missing or malformed configuration (like an invalid DATABASE_URL).
 
 ---
 
 ## Project Structure
 
+The project follows a **Modular Architecture**. Each domain (Pipelines, Subscribers, Jobs, etc...) is a self-contained unit with a consistent internal structure:
+
 ```text
 src/
-├── config/
-│   └── db.ts          # PostgreSQL connection
-├── db/
-│   └── schema.sql     # Pipelines & Webhooks tables
-├── modules/
+├── modules/               # Domain-Driven Design (DDD)
+│   ├── [module_name]/     # Standardized Module Template:
+│   │   ├── controllers/   # Request/Response handling (via catchAsync)
+│   │   ├── services/      # Business logic & Generic Query integration
+│   │   ├── routes/        # Express Route definitions
+│   │   ├── types/         # TypeScript Interfaces & Enums
+│   │   └── validation/    # Zod Schemas for request parsing
 │   ├── pipelines/
-│   │   ├── pipelines.controller.ts
-│   │   ├── pipelines.routes.ts
-│   │   ├── pipelines.service.ts
-│   │   ├── pipelines.types.ts
-│   │   └── pipelines.schema.ts
-│   ├── webhooks/
-│   │    ├── webhooks.controller.ts
-│   │    ├── webhooks.routes.ts
-│   │    ├── webhooks.service.ts
-│   │    ├── webhooks.types.ts
-│   │    └── webhooks.schema.ts
-│	├── subscribers
-│	│	 ├── subscribers.controller.ts
-│	│	 ├── subscribers.routes.ts
-│	│	 ├── subscribers.schema.ts
-│	│    ├── subscribers.service.ts
-│	│	 └── subscribers.types.ts
-│	├── jobs
-│	 	 ├── jobs.controller.ts
-│	 	 ├── jobs.routes.ts
-│	 	 ├── jobs.service.ts
-│	 	 └── jobs.types.ts
-├── index.ts           # Entry point
+│   ├── jobs/
+│   ├── deliveries/
+│   ├── subscribers/
+│   └── webhooks/
+├── config/                # db.ts & genericQueries.ts (The DAL)
+├── db/                    # SQL schema
+├── middlewares/           # Global Error & Validation logic
+├── utils/                 # catchAsync, AppError, & Response helpers
+├── worker/                # Asynchronous Job Consumer (5s Polling)
+├── app.ts                 # Express Configuration
+└── index.ts               # Server Entry Point
 package.json
 tsconfig.json
 ```
+
 ---
 
-## Environment Variables
+## Database Migrations
+This project uses a programmatic migration tool to manage schema changes. This ensures that the database structure is version-controlled alongside the code.
 
-Create a .env file in the root folde
 
-```text
-PORT=3000
-DATABASE_URL=postgresql://username:password@localhost:5432/webhook_db
+1. **Run Migrations (Bring DB to latest state):**
+
+```bash
+npx migration up
 ```
 
---- 
+2. **Rollback (If needed):**
+
+```bash
+npx migration down
+```
+
+---
+
+## Database Initialization
+Before running the application, you must create the PostgreSQL database and apply the schema:
+
+```bash
+# 1. Access PostgreSQL
+sudo -u postgres psql
+
+# 2. Create the database
+CREATE DATABASE webhook_remake_db;
+\q
+
+# 3. Apply the Schema (Tables, Constraints, and Indexes)
+psql -d webhook_remake_db -f src/db/schema.sql
+```
+
+---
+
+## Docker Orchestration
+This project is fully containerized using a Single-Image, Multi-Role strategy. Both the API and the Background Worker share the same build environment 
+but execute different entry points.
+
+1. **One-Click Deployment**
+To launch the entire ecosystem (API, Background Worker, and PostgreSQL Database) with a single command:
+```bash
+docker-compose up --build
+```
+
+2. **Service Architecture**
+The docker-compose.yml file orchestrates three distinct services:
+
+|    Service    |     Role      |    Command    |     Port      |
+| ------------- | ------------- | ------------- | ------------- |
+|      db       | PostgreSQL Persistence  | postgres:15-alpine  | 5432  |
+|      api      | Express Ingestion (Producer)  | npm run dev  | 3000  |
+|     worker    | Task Consumer  | npx ts-node src/worker/worker.ts  | N/A  |
+
+
+3. **Managing Individual Containers**
+If you need to restart or view logs for a specific part of the system:
+
+View Worker Logs:
+
+```bash
+docker-compose logs -f worker
+```
+
+Run Only the Worker:
+
+```bash
+docker-compose up worker
+```
+
+Stop All Services:
+
+```bash
+docker-compose down
+```
+
+
+---
 
 ## Setup Instructions
 
 1. Clone the repo
 
 ```text
-git clone https://https://github.com/MohammadZatarHindi/webhook
+git clone https://github.com/MohammadZatarHindi/webhook
 cd webhook-pipeline
 ```
 
@@ -127,12 +238,14 @@ npm install
 4. Setup PostgreSQL database
 
 ```text
-psql -d webhook_db -f src/db/schema.sql
+psql -d webhook_remake_db -f src/db/schema.sql
 ```
 
 5. Run the server
 
+```text
 npm run dev
+```
 
 API will be available at http://localhost:3000
 
@@ -142,153 +255,51 @@ API will be available at http://localhost:3000
 
 ```text
 {
-	"name": "Test Pipeline",
-	"action": "log"
+	"pipeline_name": "Log",
+	"action_type": "log"
 }
 ```
 
 ---
 
-## Database Table
+## Quick Start Example
 
-Pipelines
+**1. Create Pipeline**
 
-```SQL
-CREATE TABLE pipelines (
-	id SERIAL PRIMARY KEY,
-	name TEXT NOT NULL,
-	action_type TEXT NOT NULL,
-	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-Subscribers
-
-```SQL
-CREATE TABLE subscribers (
-  id SERIAL PRIMARY KEY,
-  pipeline_id INT REFERENCES pipelines(id) ON DELETE CASCADE,
-  url TEXT NOT NULL
-);
-```
-Events(Jobs)
-
-```SQL
-CREATE TABLE events (
-  id SERIAL PRIMARY KEY,
-  pipeline_id INT REFERENCES pipelines(id) ON DELETE CASCADE,
-  payload JSONB NOT NULL,
-  status TEXT DEFAULT 'pending',      -- pending / processing / success / failed
-  attempts INT DEFAULT 0,             -- retry attempts
-  error TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  last_attempt TIMESTAMP
-);
-```
-
----
-
-## 📡 API Endpoints
-
-Pipelines
-
-```text
-POST /api/pipelines
-```
-
-```text
-GET /api/pipelines
-```
-
-Subscribers
-
-```text
-POST /api/subscribers
-```
-
-```text
-GET /api/pipelines/:pipelineId/subscribers
-```
-
-Jobs
-
-```text
-POST /api/jobs
-```
-
-Webhooks (legacy/testing)
-
-```text
-POST /api/webhooks
-```
-
----
-
-## Testing
-
-Mock subscriber endpoint:
-
-```text
-POST /mock-subscriber
-```
-
----
-
-## Bash Through WSL Terminal(Test)
-
-```text
-curl -X POST http://localhost:3000/api/pipelines \
+```bash
+curl -X POST http://localhost:3000/pipelines \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "test-pipeline",
-    "action": "uppercase"
-}'
+  -d '{"name": "Uppercase", "action_type": "uppercase"}'
 ```
 
-```text
-curl -X POST http://localhost:3000/api/pipelines/1/subscribers \
+**2. Create Subscriber**
+
+```bash
+curl -X POST http://localhost:3000/subscribers \
   -H "Content-Type: application/json" \
-  -d '{
-    "pipeline_id": 1,
-    "url": "http://app:3000/mock-subscriber"
-}'
+  -d '{"url": "http://localhost:4000/mocker"}'
 ```
 
-```text
-curl -X POST http://localhost:3000/api/webhooks \
+**3. Create Subscribtons**
+
+```bash
+curl -X POST http://localhost:3000/subscribtions \
   -H "Content-Type: application/json" \
-  -d '{
-    "event": "uppercase",
-    "data": {
-      "text": "hello world"
-    }
-}'
+  -d '{"pipeline_id": 1, "subscriber_id": 1}'
+```
+
+**4. Queue a job**
+
+```bash
+curl -X POST http://localhost:3000/webhooks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"payload": {"text": "Hello, world!"}}'
+```
+
+**5. Start the worker **
+
+
+```bash
+npm run worker
 ```
   
-```text
-curl http://localhost:3000/api/jobs
-```  
-  
-```text
-  curl -X POST http://localhost:3000/api/pipelines/1/subscribers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pipeline_id": 1,
-    "url": "http://localhost:3000/non-existent"
-}'
-```
-
-```text
-  curl -X POST http://localhost:3000/api/webhooks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event": "uppercase",
-    "data": { "text": "this will fail" }
-}'
-```
-
-```text
-  curl http://localhost:3000/api/jobs/2
-```
-
----

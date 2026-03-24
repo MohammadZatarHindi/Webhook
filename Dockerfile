@@ -1,20 +1,23 @@
-# Use Node 20
-FROM node:20
+# Use Node.js 20 LTS
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files first
-COPY package*.json ./
+# Copy package files
+COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
-# Copy rest of the project
+# Copy source code
 COPY . .
 
 # Build TypeScript
 RUN npm run build
 
-# Default CMD (can be overridden in docker-compose)
-CMD ["npm", "run", "worker"]
+# Expose API port
+EXPOSE 3000
+
+# Use environment variables from .env
+CMD ["node", "dist/index.js"]

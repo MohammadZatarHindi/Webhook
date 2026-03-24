@@ -1,0 +1,22 @@
+/* --------------------------
+   Action Types (Single Source of Truth)
+-------------------------- */
+// Define all valid pipeline action types as a frozen array (immutable)
+export const ACTION_TYPES = Object.freeze([
+  'log',
+  'uppercase',
+  'reverse',
+] as const);
+
+// Union type derived from ACTION_TYPES array
+export type ActionType = (typeof ACTION_TYPES)[number];
+
+/* --------------------------
+   Pipeline Model
+-------------------------- */
+export interface Pipeline {
+  pipeline_id: number;        // Primary key / identifier
+  pipeline_name: string;      // Name of the pipeline
+  action_type: ActionType;    // Must be one of 'log', 'uppercase', or 'reverse'
+  created_at?: Date;          // Optional creation timestamp (auto-generated)
+}

@@ -1,168 +1,211 @@
-import 'dotenv/config';
-import { pool } from "../config/db";
-import fetch from "node-fetch";
+import fetch from 'node-fetch';
+import { Job } from '../modules/jobs/types/job.type';
+import { DELIVERY_STATUSES } from '../modules/deliveries/types/delivery.type';
+import { selectQuery, insertQuery, updateQuery, joinQuery } from '../config/genericQueries';
 
-// ----------------------
-// Pipeline Actions
-// ----------------------
-const ACTIONS: Record<string, (data: any) => any> = {
-  log: (data: any) => data,
-  uppercase: (data: any) => {
-    if (data.text) data.text = String(data.text).toUpperCase();
-    return data;
-  },
-  reverse: (data: any) => {
-    if (data.text) data.text = String(data.text).split("").reverse().join("");
-    return data;
-  },
-};
+/* ---------------------- CONSTANTS ---------------------- */
+const POLL_INTERVAL = 5000; // 5 seconds between polling for new jobs
+const MAX_ATTEMPTS = 3;     // Maximum delivery attempts per subscriber
 
-// ----------------------
-// Config
-// ----------------------
-const PROCESS_INTERVAL = 2000;      // 2 seconds
-const MAX_JOB_RETRIES = 3;          // max job attempts
-const MAX_SUBSCRIBER_RETRIES = 3;   // max retries per subscriber
-const RETRY_DELAY_MS = 1000;        // wait between subscriber retries
+/* ---------------------- LOGGER ---------------------- */
+// Simple logger with ISO timestamp for clarity
+function log(...args: any[]) {
+  console.log(new Date().toISOString(), '|', ...args);
+}
 
-// ----------------------
-// Helpers
-// ----------------------
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+/* ---------------------- APPLY ACTION ---------------------- */
+/**
+ * Applies the pipeline action to the payload.
+ * @param payload - Original job payload
+ * @param actionType - Pipeline action type ('uppercase', 'reverse', 'log')
+ * @returns Processed payload
+ *
+ * Usage:
+ * const result = applyAction({ text: "hello" }, "uppercase");
+ * // result.text === "HELLO"
+ */
+function applyAction(payload: any, actionType: string) {
+  if (!payload?.text) return payload; // If no text, return as-is
 
-// ----------------------
-// Worker Function
-// ----------------------
-export const processJobs = async () => {
-  const client = await pool.connect();
+  const text = payload.text;
+  switch (actionType) {
+    case 'uppercase':
+      return { ...payload, text: text.toUpperCase() };
+    case 'reverse':
+      return { ...payload, text: text.split('').reverse().join('') };
+    case 'log':
+      return payload; // No modification
+    default:
+      return payload; // Unknown action, return as-is
+  }
+}
 
+/* ---------------------- PROCESS SINGLE JOB ---------------------- */
+/**
+ * Processes a single job:
+ * - Fetches the pipeline action
+ * - Marks job as processing
+ * - Fetches subscribers
+ * - Applies the action to the payload
+ * - Sends the processed payload to each subscriber with retries
+ * - Records each delivery in the 'deliveries' table
+ * - Updates job status based on delivery results
+ *
+ * Usage:
+ * await processJob(job); // job is from selectQuery<Job>
+ */
+async function processJob(job: Job) {
   try {
-    // Atomically fetch a pending job
-    const { rows } = await client.query(
-      `UPDATE events
-       SET status = 'processing'
-       WHERE id = (
-         SELECT id FROM events
-         WHERE status = 'pending' AND attempts < $1
-         ORDER BY created_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-       )
-       RETURNING *`,
-      [MAX_JOB_RETRIES]
-    );
-
-    const job = rows[0];
-    if (!job) return; // no pending jobs
-
-    console.log(`\nProcessing Job ${job.id} (Pipeline ${job.pipeline_id})`);
-
     // ----------------------
-    // Determine action_type
+    // Fetch pipeline to get action type
     // ----------------------
-    let actionType = job.action_type;
+    const pipeline = await selectQuery<{ action_type: string }>('pipelines', {
+      where: { pipeline_id: job.pipeline_id }, // filter by pipeline_id
+      single: true,                            // return single row | null
+    });
 
-    // fallback to pipeline action_type if missing
-    if (!actionType) {
-      const res = await client.query(
-        `SELECT action_type FROM pipelines WHERE id = $1`,
-        [job.pipeline_id]
-      );
-      actionType = res.rows[0]?.action_type;
+    if (!pipeline) {
+      log(`JOB ${job.job_id} → pipeline ${job.pipeline_id} not found → FAIL`);
+      await updateQuery('jobs', { status: 'failed' }, { job_id: job.job_id });
+      return;
     }
 
-    const actionFn = actionType ? ACTIONS[actionType.toLowerCase()] : undefined;
-
-    if (!actionFn) {
-      const errMsg = `Unknown action_type "${actionType}" for job ${job.id}`;
-      console.error(errMsg);
-
-      await client.query(
-        `UPDATE events
-         SET status = 'failed',
-             attempts = attempts + 1,
-             last_attempt = NOW(),
-             error = $1
-         WHERE id = $2`,
-        [errMsg, job.id]
-      );
-      return; // stop processing
-    }
+    const actionType = pipeline.action_type;
+    log(`JOB ${job.job_id} → START → Action: ${actionType}`);
 
     // ----------------------
-    // Execute action
+    // Mark job as processing
     // ----------------------
-    const result = actionFn(job.payload);
-    console.log(`[Job ${job.id}] Action: ${actionType.toUpperCase()}, Result:`, result);
+    await updateQuery('jobs', { status: 'processing' }, { job_id: job.job_id });
 
     // ----------------------
-    // Deliver to subscribers
+    // Fetch subscribers linked to this pipeline
     // ----------------------
-    const { rows: subs } = await client.query(
-      `SELECT id, url FROM subscribers WHERE pipeline_id = $1`,
-      [job.pipeline_id]
-    );
+    const subscribers = await joinQuery<{ subscriber_id: number; url: string }>({
+      select: ['s.subscriber_id', 's.url'],
+      from: 'subscribers s',
+      join: { table: 'subscribtions sub', on: 's.subscriber_id = sub.subscriber_id', type: 'INNER' },
+      where: { 'sub.pipeline_id': job.pipeline_id },
+    });
 
-    let allDelivered = true;
-    let lastError: string | null = null;
+    log(`JOB ${job.job_id} → Found ${subscribers.length} subscriber(s)`);
 
-    for (const sub of subs) {
-      let delivered = false;
+    const originalPayload = { ...job.payload };
+    const processedPayload = applyAction(originalPayload, actionType);
 
-      for (let attempt = 1; attempt <= MAX_SUBSCRIBER_RETRIES; attempt++) {
+    let totalAttempts = 0;   // Track total attempts across all subscribers
+    let jobHasSuccess = false; // Track if at least one delivery succeeded
+
+    // ----------------------
+    // Loop over subscribers
+    // ----------------------
+    for (const sub of subscribers) {
+      // Check last delivery for this subscriber to avoid retrying unnecessary
+      const lastDelivery = await selectQuery<{ status: string; attempts: number }>('deliveries', {
+        where: { job_id: job.job_id, subscriber_id: sub.subscriber_id },
+        orderBy: 'attempted_at',
+        order: 'DESC',
+        single: true,
+      });
+
+      // Skip subscriber if success or max attempts reached
+      if (lastDelivery?.status === 'success' || (lastDelivery?.attempts || 0) >= MAX_ATTEMPTS) {
+        log(`JOB ${job.job_id} → Subscriber ${sub.url} already success or max attempts → skip`);
+        continue;
+      }
+
+      let attemptNumber = lastDelivery?.attempts || 0;
+      let finalStatus: 'failed' | 'success' = 'failed';
+
+      // ----------------------
+      // Retry loop per subscriber
+      // ----------------------
+      while (attemptNumber < MAX_ATTEMPTS) {
+        attemptNumber++;
+        totalAttempts++;
+        log(`JOB ${job.job_id} → Subscriber ${sub.url} attempt ${attemptNumber}/${MAX_ATTEMPTS}`);
+
+        let status: 'failed' | 'success' = 'failed';
+        let responseCode = 0;
+        let responseBody = '';
+
         try {
+          // ----------------------
+          // Send processed payload to subscriber
+          // ----------------------
           const res = await fetch(sub.url, {
             method: 'POST',
-            body: JSON.stringify(result),
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              job_id: job.job_id,
+              action_type: actionType,
+              original_payload: originalPayload,
+              processed_payload: processedPayload,
+            }),
           });
 
-          if (!res.ok) throw new Error(`HTTP ${res.status} - ${res.statusText}`);
-          delivered = true;
-          console.log(`Delivered to ${sub.url}`);
-          break;
-
-        } catch (err: unknown) {
-          lastError = err instanceof Error ? err.message : String(err);
-          console.error(`Attempt ${attempt} failed for ${sub.url}: ${lastError}`);
-          await sleep(RETRY_DELAY_MS);
+          responseCode = res.status;
+          const json = await res.json().catch(() => null);
+          responseBody = JSON.stringify(json || { text: 'No JSON' });
+          status = res.ok ? 'success' : 'failed';
+        } catch (err) {
+          responseBody = (err as Error).message;
         }
+
+        // ----------------------
+        // Record delivery attempt in 'deliveries' table
+        // ----------------------
+        await insertQuery('deliveries', {
+          job_id: job.job_id,
+          subscriber_id: sub.subscriber_id,
+          status,
+          attempts: attemptNumber,
+          response_code: responseCode,
+          response_body: responseBody,
+          attempted_at: new Date(),
+        });
+
+        if (status === 'success') {
+          finalStatus = 'success';
+          jobHasSuccess = true; // at least one subscriber succeeded
+          break; // stop retrying this subscriber
+        }
+
+        await new Promise(r => setTimeout(r, 300)); // small delay between attempts
       }
 
-      if (!delivered) {
-        allDelivered = false;
-        console.error(`Failed to deliver to ${sub.url} after ${MAX_SUBSCRIBER_RETRIES} attempts`);
-      }
+      if (finalStatus === 'failed') log(`JOB ${job.job_id} → Subscriber ${sub.url} FAILED`);
     }
 
     // ----------------------
-    // Update job status
+    // Update job status based on overall success
     // ----------------------
-    const newAttempts = job.attempts + 1;
-    const newStatus = allDelivered
-      ? 'success'
-      : newAttempts >= MAX_JOB_RETRIES
-      ? 'failed'
-      : 'pending';
+    const jobStatus = jobHasSuccess ? 'completed' : 'failed';
+    await updateQuery('jobs', { status: jobStatus, attempts: totalAttempts }, { job_id: job.job_id });
 
-    await client.query(
-      `UPDATE events
-       SET status = $1,
-           attempts = $2,
-           last_attempt = NOW(),
-           error = $3
-       WHERE id = $4`,
-      [newStatus, newAttempts, allDelivered ? null : lastError, job.id]
-    );
-
-    console.log(`Job ${job.id} ${newStatus.toUpperCase()}`);
-
-  } finally {
-    client.release();
+    log(`JOB ${job.job_id} → END → Status: ${jobStatus} | Total attempts: ${totalAttempts}`);
+  } catch (err) {
+    log(`JOB ${job.job_id} → ERROR`, err);
   }
-};
+}
 
-// ----------------------
-// Worker Loop
-// ----------------------
-setInterval(processJobs, PROCESS_INTERVAL);
+/* ---------------------- WORKER LOOP ---------------------- */
+/**
+ * Continuously polls the 'jobs' table for pending jobs.
+ * Processes each pending job sequentially.
+ * Waits POLL_INTERVAL ms before next polling iteration.
+ */
+async function workerLoop() {
+  while (true) {
+    const jobs = await selectQuery<Job>('jobs', { where: { status: 'pending' } });
+    log(`Polling... found ${jobs.length} pending job(s)`);
+
+    for (const job of jobs) await processJob(job);
+
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+  }
+}
+
+/* ---------------------- START WORKER ---------------------- */
+// Entry point: start the worker loop
+workerLoop().catch(err => console.error('Worker crashed:', err));

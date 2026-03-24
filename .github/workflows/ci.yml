@@ -1,0 +1,55 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      # Starts a real Postgres instance in the GitHub Runner
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: mohammad
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: webhook_remake_db
+        ports:
+          - 5432:5432
+        # Ensures the DB is ready before the steps start
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Linting
+        # This now uses your eslint.config.mjs automatically
+        run: npm run lint
+
+      - name: Run Tests
+        # Passes the connection string to your Generic Query layer
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://mohammad:root@localhost:5432/webhook_remake_db
+
+      - name: Build Docker Image
+        # Verifies your Dockerfile is valid and builds correctly
+        run: docker build -t webhook-service:latest .
