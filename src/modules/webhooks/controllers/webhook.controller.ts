@@ -3,7 +3,7 @@ import { createJobForWebhook, createJobsForWebhooks } from '../services/webhook.
 import { WebhookDTO, WebhookParams } from '../validation/webhook.validation';
 import { sendResponse } from '../../../utils/responseHandler';
 import { asyncHandler } from '../../../utils/asyncHandler';
-import { enqueueJob } from '../../../worker/worker'; // import enqueue function
+import { enqueueJob } from '../../../queue/queue'; // import enqueue function
 
 /* --------------------------
    CREATE SINGLE WEBHOOK JOB

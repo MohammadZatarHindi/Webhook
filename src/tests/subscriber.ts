@@ -14,7 +14,7 @@ app.use(express.json());
  * processes it, and returns a JSON response.
  */
 app.post('/mocker', (req, res) => {
-  const { job_id, processed_payload } = req.body; // <-- use processed_payload
+  const { /*job_id, */processed_payload } = req.body; // <-- use processed_payload
 
   console.log('Test webhook received:', req.body);
 

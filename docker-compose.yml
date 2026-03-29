@@ -1,4 +1,4 @@
-version: '3.9'
+# docker-compose.yml
 
 services:
   # -------------------- API --------------------
@@ -17,6 +17,11 @@ services:
       - db
       - redis
     command: ["node", "dist/index.js"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -------------------- WORKER --------------------
   worker:
@@ -32,6 +37,11 @@ services:
       - db
       - redis
     command: ["node", "dist/worker/worker.js"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -------------------- SUBSCRIBER --------------------
   subscriber:
@@ -48,6 +58,11 @@ services:
     depends_on:
       - api
     command: ["node", "dist/tests/subscriber.js"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -------------------- POSTGRES --------------------
   db:
@@ -63,6 +78,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -------------------- REDIS --------------------
   redis:
@@ -71,6 +91,11 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # -------------------- VOLUMES --------------------
 volumes:
