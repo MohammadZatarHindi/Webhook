@@ -1,6 +1,7 @@
 version: '3.9'
 
 services:
+  # -------------------- API --------------------
   api:
     build: .
     container_name: webhook_api
@@ -15,13 +16,13 @@ services:
     depends_on:
       - db
       - redis
+    command: ["node", "dist/index.js"]
 
+  # -------------------- WORKER --------------------
   worker:
     build: .
     container_name: webhook_worker
     restart: always
-    # 'tail -f /dev/null' keeps the container running but idle
-    command: tail -f /dev/null
     env_file:
       - .env
     volumes:
@@ -30,13 +31,13 @@ services:
     depends_on:
       - db
       - redis
-    
+    command: ["node", "dist/worker/worker.js"]
+
+  # -------------------- SUBSCRIBER --------------------
   subscriber:
     build: .
     container_name: webhook_subscriber
     restart: always
-    # Stays idle so you can start it manually
-    command: tail -f /dev/null
     ports:
       - "4000:4000"
     env_file:
@@ -46,21 +47,24 @@ services:
       - /app/node_modules
     depends_on:
       - api
-      
+    command: ["node", "dist/tests/subscriber.js"]
+
+  # -------------------- POSTGRES --------------------
   db:
     image: postgres:16
     container_name: webhook_postgres
     restart: always
     environment:
-      - POSTGRES_USER=mohammad
-      - POSTGRES_PASSWORD=root
-      - POSTGRES_DB=webhook_db
+      POSTGRES_USER: mohammad
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: webhook_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
+  # -------------------- REDIS --------------------
   redis:
     image: redis:7
     container_name: webhook_redis
@@ -68,5 +72,6 @@ services:
     ports:
       - "6379:6379"
 
+# -------------------- VOLUMES --------------------
 volumes:
   postgres_data:

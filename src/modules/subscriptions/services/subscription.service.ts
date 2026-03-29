@@ -1,52 +1,52 @@
 import * as db from '../../../config/genericQueries';
-import { CreateSubscribtionDTO, UpdateSubscribtionDTO } from '../validation/subscribtion.validation';
-import { Subscribtion } from '../types/subscribtion.type';
+import { CreateSubscriptionDTO, UpdateSubscriptionDTO } from '../validation/subscription.validation';
+import { Subscription } from '../types/subscription.type';
 import { getPipeline } from '../../pipelines/services/pipeline.service';
 import { getSubscriber } from '../../subscribers/services/subscriber.service';
 import { Pipeline } from '../../pipelines/types/pipeline.type';
 import { Subscriber } from '../../subscribers/types/subscriber.type';
 
-const TABLE = 'subscribtions';
+const TABLE = 'subscriptions';
 
 /* --------------------------
    CREATE SUBSCRIPTION
 -------------------------- */
-export const createSubscribtion = async (data: CreateSubscribtionDTO): Promise<Subscribtion> => {
+export const createSubscription = async (data: CreateSubscriptionDTO): Promise<Subscription> => {
   const pipeline = await getPipeline({ pipeline_id: data.pipeline_id });
   if (!pipeline) throw new Error(`Pipeline with id ${data.pipeline_id} not found`);
 
   const subscriber = await getSubscriber({ subscriber_id: data.subscriber_id });
   if (!subscriber) throw new Error(`Subscriber with id ${data.subscriber_id} not found`);
 
-  const existing = await db.selectQuery<Subscribtion>(TABLE, {
+  const existing = await db.selectQuery<Subscription>(TABLE, {
     where: { pipeline_id: data.pipeline_id, subscriber_id: data.subscriber_id },
     single: true,
   });
 
-  if (existing) throw new Error('Subscribtion already exists');
+  if (existing) throw new Error('Subscription already exists');
 
-  return db.insertQuery<Subscribtion>(TABLE, { ...data, created_at: new Date() });
+  return db.insertQuery<Subscription>(TABLE, { ...data, created_at: new Date() });
 };
 
 /* --------------------------
    GET ALL SUBSCRIPTIONS
 -------------------------- */
-export const getSubscribtions = async (): Promise<Subscribtion[]> =>
-  db.selectQuery<Subscribtion>(TABLE, { orderBy: 'subscribtion_id', order: 'ASC' });
+export const getSubscriptions = async (): Promise<Subscription[]> =>
+  db.selectQuery<Subscription>(TABLE, { orderBy: 'subscription_id', order: 'ASC' });
 
 /* --------------------------
    GET SINGLE SUBSCRIPTION
 -------------------------- */
-export const getSubscribtion = async (subscribtion_id: number): Promise<Subscribtion | null> =>
-  db.selectQuery<Subscribtion>(TABLE, { where: { subscribtion_id }, single: true });
+export const getSubscription = async (subscription_id: number): Promise<Subscription | null> =>
+  db.selectQuery<Subscription>(TABLE, { where: { subscription_id }, single: true });
 
 /* --------------------------
    UPDATE SUBSCRIPTION
 -------------------------- */
-export const updateSubscribtion = async (
-  subscribtion_id: number,
-  data: UpdateSubscribtionDTO
-): Promise<Subscribtion | null> => {
+export const updateSubscription = async (
+  subscription_id: number,
+  data: UpdateSubscriptionDTO
+): Promise<Subscription | null> => {
   if (data.pipeline_id) {
     const pipeline = await getPipeline({ pipeline_id: data.pipeline_id });
     if (!pipeline) throw new Error(`Pipeline with id ${data.pipeline_id} not found`);
@@ -57,14 +57,14 @@ export const updateSubscribtion = async (
     if (!subscriber) throw new Error(`Subscriber with id ${data.subscriber_id} not found`);
   }
 
-  return db.updateQuery<Subscribtion>(TABLE, data, { subscribtion_id });
+  return db.updateQuery<Subscription>(TABLE, data, { subscription_id });
 };
 
 /* --------------------------
    DELETE SUBSCRIPTION
 -------------------------- */
-export const deleteSubscribtion = async (subscribtion_id: number): Promise<Subscribtion | null> =>
-  db.deleteQuery<Subscribtion>(TABLE, { subscribtion_id });
+export const deleteSubscription = async (subscription_id: number): Promise<Subscription | null> =>
+  db.deleteQuery<Subscription>(TABLE, { subscription_id });
 
 /* --------------------------
    PIPELINE SUBSCRIBERS
@@ -75,7 +75,7 @@ export const getPipelineSubscribers = async (pipeline_id: number): Promise<Subsc
 
   const result = await db.joinQuery<Subscriber>({
     from: 'subscribers s',
-    join: { table: 'subscribtions sub', on: 's.subscriber_id = sub.subscriber_id', type: 'INNER' },
+    join: { table: 'subscriptions sub', on: 's.subscriber_id = sub.subscriber_id', type: 'INNER' },
     where: { 'sub.pipeline_id': pipeline_id },
     orderBy: 's.subscriber_id',
   });
@@ -93,7 +93,7 @@ export const getSubscriberPipelines = async (subscriber_id: number): Promise<Pip
 
   const result = await db.joinQuery<Pipeline>({
     from: 'pipelines p',
-    join: { table: 'subscribtions sub', on: 'p.pipeline_id = sub.pipeline_id', type: 'INNER' },
+    join: { table: 'subscriptions sub', on: 'p.pipeline_id = sub.pipeline_id', type: 'INNER' },
     where: { 'sub.subscriber_id': subscriber_id },
     orderBy: 'p.pipeline_id',
   });

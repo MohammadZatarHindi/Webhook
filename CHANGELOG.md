@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v0.6.0] - 2026-03-30
+
+### Major Update: BullMQ Integration & Enhanced Error Handling
+
+This release documents and clarifies the use of **BullMQ** for job queuing and the system's centralized error-handling strategy in the README.
+
+---
+
+### Added
+- BullMQ section in README explaining:
+  - API → Worker → Subscriber flow
+  - Retry logic for job delivery
+  - Multi-subscriber fan-out
+  - Job lifecycle tracking (`pending → processing → success/failed`)
+  - Monitoring and observability for jobs and deliveries
+- Error Handling section in README explaining:
+  - Express global error middleware and standardized JSON responses
+  - Worker retries and logging for subscriber failures
+  - Database error handling with meaningful API messages
+  - Graceful shutdown handling for API and Worker
+  - Full observability through the `deliveries` audit table
+
+---
+
 ## [v0.5.0] - 2026-03-24
 
 ###Major Update: Production Readiness & Architectural Refactoring

@@ -3,7 +3,7 @@ import { getPipeline } from '../../pipelines/services/pipeline.service';
 import { Job } from '../../jobs/types/job.type';
 import { WebhookDTO } from '../validation/webhook.validation';
 
-import { getPipelineSubscribers } from '../../subscribtions/services/subscribtion.service';
+import { getPipelineSubscribers } from '../../subscriptions/services/subscription.service';
 import { getPipelines } from '../../pipelines/services/pipeline.service';
 import { getPendingJob } from '../../jobs/helpers/job.helper';
 

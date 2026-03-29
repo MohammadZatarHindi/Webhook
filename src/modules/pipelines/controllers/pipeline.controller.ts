@@ -12,24 +12,22 @@ import {
   UpdatePipelineDTO,
 } from '../validation/pipeline.validation';
 
-import { catchAsync } from '../../../utils/catchAsync';
-
-import { sendNotFound } from '../../../utils/responseHandler';
+import { sendResponse } from '../../../utils/responseHandler';
+import { asyncHandler } from '../../../utils/asyncHandler';
 
 /* --------------------------
    CREATE PIPELINE
 -------------------------- */
-export const createPipelineUsingPost = catchAsync(
+export const createPipelineUsingPost = asyncHandler(
   async (req: Request, res: Response) => {
-    const body = req.body as CreatePipelineDTO;
+    const pipeline = await createPipeline(req.body as CreatePipelineDTO);
 
-    // Call service layer to create pipeline
-    const pipeline = await createPipeline(body);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Pipeline created',
-      pipeline,
+    return sendResponse({
+      res,
+      entity: 'Pipeline',
+      action: 'created',
+      data: pipeline,
+      statusCode: 201,
     });
   }
 );
@@ -37,15 +35,15 @@ export const createPipelineUsingPost = catchAsync(
 /* --------------------------
    GET ALL PIPELINES
 -------------------------- */
-export const getPipelinesUsingGet = catchAsync(
+export const getPipelinesUsingGet = asyncHandler(
   async (_req: Request, res: Response) => {
     const pipelines = await getPipelines();
-    const isEmpty = pipelines.length === 0;
 
-    return res.json({
-      success: true,
-      pipelines,
-      ...(isEmpty && { message: 'No pipelines yet' }),
+    return sendResponse({
+      res,
+      entity: 'Pipelines',
+      action: 'retrieved',
+      data: pipelines,
     });
   }
 );
@@ -53,17 +51,33 @@ export const getPipelinesUsingGet = catchAsync(
 /* --------------------------
    GET SINGLE PIPELINE
 -------------------------- */
-export const getPipelineUsingGet = catchAsync(
+export const getPipelineUsingGet = asyncHandler(
   async (req: Request, res: Response) => {
     const pipeline_id = Number(req.params.pipeline_id);
 
-    const pipeline = await getPipeline({ pipeline_id });
-    if (!pipeline) return sendNotFound(res, 'Pipeline');;
+    if (isNaN(pipeline_id)) {
+      return sendResponse({
+        res,
+        error: 'Invalid pipeline ID',
+        statusCode: 400,
+      });
+    }
 
-    return res.json({
-      success: true,
-      message: `Pipeline retrieved`,
-      pipeline,
+    const pipeline = await getPipeline({ pipeline_id });
+
+    if (!pipeline) {
+      return sendResponse({
+        res,
+        entity: 'Pipeline',
+        action: 'notFound',
+      });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Pipeline',
+      action: 'retrieved',
+      data: pipeline,
     });
   }
 );
@@ -71,32 +85,36 @@ export const getPipelineUsingGet = catchAsync(
 /* --------------------------
    UPDATE PIPELINE
 -------------------------- */
-export const updatePipelineUsingPut = catchAsync(
+export const updatePipelineUsingPut = asyncHandler(
   async (req: Request, res: Response) => {
     const pipeline_id = Number(req.params.pipeline_id);
-    const body = req.body as UpdatePipelineDTO;
 
-    // Call service to update the pipeline
-    const pipeline = await updatePipeline({ pipeline_id }, body);
-    if (!pipeline) return sendNotFound(res, 'Pipeline');;
+    if (isNaN(pipeline_id)) {
+      return sendResponse({
+        res,
+        error: 'Invalid pipeline ID',
+        statusCode: 400,
+      });
+    }
 
-    // Compute only updated fields to return
-    const updatedFields = Object.keys(body).reduce<Record<string, any>>(
-      (acc, key) => {
-        const value = (body as any)[key];
-        if (value !== undefined) {
-          acc[key] = (pipeline as any)[key];
-        }
-        return acc;
-      },
-      {}
+    const pipeline = await updatePipeline(
+      { pipeline_id },
+      req.body as UpdatePipelineDTO
     );
 
-    return res.json({
-      success: true,
-      message: `Pipeline updated`,
-      updatedFields,
-      pipeline,
+    if (!pipeline) {
+      return sendResponse({
+        res,
+        entity: 'Pipeline',
+        action: 'notFound',
+      });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Pipeline',
+      action: 'updated',
+      data: pipeline,
     });
   }
 );
@@ -104,17 +122,33 @@ export const updatePipelineUsingPut = catchAsync(
 /* --------------------------
    DELETE PIPELINE
 -------------------------- */
-export const deletePipelineUsingDelete = catchAsync(
+export const deletePipelineUsingDelete = asyncHandler(
   async (req: Request, res: Response) => {
     const pipeline_id = Number(req.params.pipeline_id);
 
-    const pipeline = await deletePipeline({ pipeline_id });
-    if (!pipeline) return sendNotFound(res, 'Pipeline');;
+    if (isNaN(pipeline_id)) {
+      return sendResponse({
+        res,
+        error: 'Invalid pipeline ID',
+        statusCode: 400,
+      });
+    }
 
-    return res.json({
-      success: true,
-      message: `Pipeline deleted`,
-      pipeline,
+    const pipeline = await deletePipeline({ pipeline_id });
+
+    if (!pipeline) {
+      return sendResponse({
+        res,
+        entity: 'Pipeline',
+        action: 'notFound',
+      });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Pipeline',
+      action: 'deleted',
+      data: pipeline,
     });
   }
 );

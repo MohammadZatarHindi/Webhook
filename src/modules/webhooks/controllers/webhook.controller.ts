@@ -1,46 +1,60 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { createJobForWebhook, createJobsForWebhooks } from '../services/webhook.service';
 import { WebhookDTO, WebhookParams } from '../validation/webhook.validation';
-  
-export const createWebhookUsingPost = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { pipeline_id } = req.params as unknown as WebhookParams; // safely typed
+import { sendResponse } from '../../../utils/responseHandler';
+import { asyncHandler } from '../../../utils/asyncHandler';
+import { enqueueJob } from '../../../worker/worker'; // import enqueue function
+
+/* --------------------------
+   CREATE SINGLE WEBHOOK JOB
+-------------------------- */
+export const createWebhookUsingPost = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { pipeline_id } = req.params as unknown as WebhookParams;
     const dto = req.body as WebhookDTO;
 
-    // create a pending job
+    // create job in DB
     const job = await createJobForWebhook(pipeline_id, dto);
-	
-	
-    res.status(201).json({
-      success: true,
-      message: 'Webhook received and job created',
-      job,
+
+    // enqueue job to BullMQ
+    await enqueueJob(job);
+
+    return sendResponse({
+      res,
+      entity: 'Webhook Job',
+      action: 'created',
+      data: job,
+      statusCode: 201,
     });
-  } catch (err: any) {
-    next(err);
   }
-};
+);
 
-export const createWebhooksUsingPost = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const dto = req.body as WebhookDTO;
-
-    const jobs = await createJobsForWebhooks(dto);
+/* --------------------------
+   CREATE MULTIPLE WEBHOOK JOBS
+-------------------------- */
+export const createWebhooksUsingPost = asyncHandler(
+  async (req: Request, res: Response) => {
+    const jobs = await createJobsForWebhooks(req.body);
 
     if (!jobs.length) {
-      return res.status(200).json({
-        success: true,
-        message: 'No eligible pipelines (no subscribers or already processing)',
-        jobs: [],
+      return sendResponse({
+        res,
+        entity: 'Webhook Jobs',
+        action: 'retrieved',
+        data: [],
       });
     }
 
-    res.status(201).json({
-      success: true,
-      message: `${jobs.length} job(s) created for pipelines with subscribers`,
-      jobs,
+    for (const job of jobs) {
+      await enqueueJob(job);
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Webhook Jobs',
+      action: 'created',
+      data: jobs,
+      statusCode: 201,
     });
-  } catch (err) {
-    next(err);
   }
-};
+);

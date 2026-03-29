@@ -66,6 +66,16 @@ Built-in resilience for unstable network conditions or failing downstream servic
 
 ---
 
+### Persistent Job Queue with BullMQ
+
+This system leverages **BullMQ** to handle asynchronous job processing efficiently:
+
+- **Queue-Based Architecture:** The API enqueues jobs into BullMQ backed by Redis. The worker consumes jobs in a non-blocking, fault-tolerant manner.
+- **Retry Logic:** Each job can retry failed subscriber deliveries up to 3 times automatically.
+- **Multi-Subscriber Fan-Out:** Jobs can notify multiple subscribers simultaneously, ensuring reliable delivery of processed payloads.
+- **Job Lifecycle:** Jobs follow a strict state machine: `pending` → `processing` → `success` / `failed`.
+- **Monitoring & Observability:** Each job and delivery attempt is logged in the database, providing a full audit trail of processed events.
+
 ### Database Architecture
 
 **1. Configuration Layer:**

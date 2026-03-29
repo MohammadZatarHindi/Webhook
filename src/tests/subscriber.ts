@@ -14,24 +14,15 @@ app.use(express.json());
  * processes it, and returns a JSON response.
  */
 app.post('/mocker', (req, res) => {
-  const { job_id, payload } = req.body;
+  const { job_id, processed_payload } = req.body; // <-- use processed_payload
 
-  // Log the entire request body for debugging
   console.log('Test webhook received:', req.body);
 
-  // Initialize result
-  let result: string | null = null;
-
-  // Process payload safely: if payload has a 'text' property, convert it to uppercase
-  if (payload?.text) {
-    result = payload.text.toUpperCase();
-  }
-
-  // Send response back to the client
+  // Echo back the processed_payload
   res.status(200).json({
-    success: true,           // Indicates webhook was received successfully
-    message: 'Webhook received', // Informative message
-    result,                  // Processed payload (uppercase text or null)
+    success: true,
+    message: 'Webhook received',
+    result: processed_payload || null, // now will show { text: "HELLO, WORLD!" }
   });
 });
 

@@ -23,7 +23,12 @@ export type CreatePipelineDTO = z.infer<typeof createPipelineSchema>;
    Update Pipeline Schema
 -------------------------- */
 // Partial schema: all fields optional for updates
-export const updatePipelineSchema = createPipelineSchema.partial();
+export const updatePipelineSchema = createPipelineSchema
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field is required to update',
+    path: ['body'], // optional: indicate the error is on the body
+  });
 
 // DTO type for update
 export type UpdatePipelineDTO = z.infer<typeof updatePipelineSchema>;

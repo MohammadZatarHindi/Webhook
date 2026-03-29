@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { catchAsync } from '../../../utils/catchAsync';
 import {
   createSubscriber,
   getSubscribers,
@@ -7,36 +6,43 @@ import {
   updateSubscriber,
   deleteSubscriber,
 } from '../services/subscriber.service';
-
 import {
   CreateSubscriberDTO,
   UpdateSubscriberDTO,
-  SubscriberParams,
 } from '../validation/subscriber.validation';
-
-import { sendNotFound } from '../../../utils/responseHandler';
+import { sendResponse } from '../../../utils/responseHandler';
+import { asyncHandler } from '../../../utils/asyncHandler';
 
 /* --------------------------
    CREATE SUBSCRIBER
 -------------------------- */
-export const createSubscriberUsingPost = catchAsync(
+export const createSubscriberUsingPost = asyncHandler(
   async (req: Request, res: Response) => {
     const dto = req.body as CreateSubscriberDTO;
     const subscriber = await createSubscriber(dto);
-    return res.status(201).json({ success: true, message: 'Subscriber created', subscriber });
+
+    return sendResponse({
+      res,
+      entity: 'Subscriber',
+      action: 'created',
+      data: subscriber,
+      statusCode: 201,
+    });
   }
 );
 
 /* --------------------------
    GET ALL SUBSCRIBERS
 -------------------------- */
-export const getSubscribersUsingGet = catchAsync(
+export const getSubscribersUsingGet = asyncHandler(
   async (_req: Request, res: Response) => {
     const subscribers = await getSubscribers();
-    return res.json({
-      success: true,
-      subscribers,
-      ...(subscribers.length === 0 && { message: 'No subscribers found' }),
+
+    return sendResponse({
+      res,
+      entity: 'Subscribers',
+      action: 'retrieved',
+      data: subscribers,
     });
   }
 );
@@ -44,37 +50,55 @@ export const getSubscribersUsingGet = catchAsync(
 /* --------------------------
    GET SINGLE SUBSCRIBER
 -------------------------- */
-export const getSubscriberUsingGet = catchAsync(
+export const getSubscriberUsingGet = asyncHandler(
   async (req: Request, res: Response) => {
-    const subscriber_id = Number(req.params.subscriber_id); // Coerce param to number
-    const subscriber = await getSubscriber({ subscriber_id });
-    if (!subscriber) return sendNotFound(res, 'Subscriber');
+    const subscriber_id = Number(req.params.subscriber_id);
 
-    return res.json({ success: true, message: 'Subscriber retrieved', subscriber });
+    if (isNaN(subscriber_id)) {
+      return sendResponse({ res, error: 'Invalid subscriber ID', statusCode: 400 });
+    }
+
+    const subscriber = await getSubscriber({ subscriber_id });
+
+    if (!subscriber) {
+      return sendResponse({ res, entity: 'Subscriber', action: 'notFound' });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Subscriber',
+      action: 'retrieved',
+      data: subscriber,
+    });
   }
 );
 
 /* --------------------------
    UPDATE SUBSCRIBER
 -------------------------- */
-export const updateSubscriberUsingPut = catchAsync(
+export const updateSubscriberUsingPut = asyncHandler(
   async (req: Request, res: Response) => {
     const subscriber_id = Number(req.params.subscriber_id);
     const dto = req.body as UpdateSubscriberDTO;
     const subscriber = await updateSubscriber({ subscriber_id }, dto);
-    if (!subscriber) return sendNotFound(res, 'Subscriber');
 
-    // Include only fields that were updated
-    const updatedFields = Object.keys(dto).reduce<Record<string, any>>((acc, key) => {
-      if ((dto as any)[key] !== undefined) acc[key] = (subscriber as any)[key];
-      return acc;
-    }, {});
+    if (!subscriber) {
+      return sendResponse({ res, entity: 'Subscriber', action: 'notFound' });
+    }
 
-    return res.json({
-      success: true,
-      message: 'Subscriber updated',
-      updatedFields,
-      subscriber,
+    const updatedFields = Object.keys(dto).reduce<Record<string, any>>(
+      (acc, key) => {
+        if ((dto as any)[key] !== undefined) acc[key] = (subscriber as any)[key];
+        return acc;
+      },
+      {}
+    );
+
+    return sendResponse({
+      res,
+      entity: 'Subscriber',
+      action: 'updated',
+      data: { subscriber, updatedFields },
     });
   }
 );
@@ -82,12 +106,20 @@ export const updateSubscriberUsingPut = catchAsync(
 /* --------------------------
    DELETE SUBSCRIBER
 -------------------------- */
-export const deleteSubscriberUsingDelete = catchAsync(
+export const deleteSubscriberUsingDelete = asyncHandler(
   async (req: Request, res: Response) => {
     const subscriber_id = Number(req.params.subscriber_id);
     const subscriber = await deleteSubscriber({ subscriber_id });
-    if (!subscriber) return sendNotFound(res, 'Subscriber');
 
-    return res.json({ success: true, message: 'Subscriber deleted', subscriber });
+    if (!subscriber) {
+      return sendResponse({ res, entity: 'Subscriber', action: 'notFound' });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Subscriber',
+      action: 'deleted',
+      data: subscriber,
+    });
   }
 );

@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { catchAsync } from '../../../utils/catchAsync';
 import {
   createDelivery,
   getDeliveries,
@@ -9,105 +8,154 @@ import {
   getJobDeliveries,
   getSubscriberDeliveries,
 } from '../services/delivery.service';
-import { CreateDeliveryDTO, UpdateDeliveryDTO, DeliveryParams } from '../validation/delivery.validation';
-import { sendNotFound } from '../../../utils/responseHandler';
+import { CreateDeliveryDTO, UpdateDeliveryDTO } from '../validation/delivery.validation';
+import { sendResponse } from '../../../utils/responseHandler';
+import { asyncHandler } from '../../../utils/asyncHandler';
 
 /* --------------------------
    CREATE DELIVERY
 -------------------------- */
-export const createDeliveryUsingPost = catchAsync(async (req: Request, res: Response) => {
-  const body = req.body as CreateDeliveryDTO;
-  const delivery = await createDelivery(body);
-  
-  return res.status(201).json({ 
-    success: true, 
-    message: 'Delivery created', 
-    delivery 
-  });
-});
+export const createDeliveryUsingPost = asyncHandler(
+  async (req: Request, res: Response) => {
+    const body = req.body as CreateDeliveryDTO;
+    const delivery = await createDelivery(body);
+
+    return sendResponse({
+      res,
+      entity: 'Delivery',
+      action: 'created',
+      data: delivery,
+      statusCode: 201,
+    });
+  }
+);
 
 /* --------------------------
    GET ALL DELIVERIES
 -------------------------- */
-export const getDeliveriesUsingGet = catchAsync(async (_req: Request, res: Response) => {
-  const deliveries = await getDeliveries();
-  
-  return res.json({ 
-    success: true, 
-    deliveries, 
-    ...(deliveries.length === 0 && { message: 'No deliveries yet' }) 
-  });
-});
+export const getDeliveriesUsingGet = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const deliveries = await getDeliveries();
+
+    return sendResponse({
+      res,
+      entity: 'Deliveries',
+      action: 'retrieved',
+      data: deliveries,
+    });
+  }
+);
 
 /* --------------------------
    GET SINGLE DELIVERY
 -------------------------- */
-export const getDeliveryUsingGet = catchAsync(async (req: Request, res: Response) => {
-  const params = req.params as unknown as DeliveryParams;
-  const delivery = await getDelivery(params);
-  
-  if (!delivery) return sendNotFound(res, 'Delivery');
-  
-  return res.json({ success: true, delivery });
-});
+export const getDeliveryUsingGet = asyncHandler(
+  async (req: Request, res: Response) => {
+    const delivery_id = Number(req.params.delivery_id);
+    const delivery = await getDelivery({ delivery_id });
+
+    if (!delivery) {
+      return sendResponse({ res, entity: 'Delivery', action: 'notFound' });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Delivery',
+      action: 'retrieved',
+      data: delivery,
+    });
+  }
+);
 
 /* --------------------------
    UPDATE DELIVERY
 -------------------------- */
-export const updateDeliveryUsingPut = catchAsync(async (req: Request, res: Response) => {
-  const params = req.params as unknown as DeliveryParams;
-  const body = req.body as UpdateDeliveryDTO;
+export const updateDeliveryUsingPut = asyncHandler(
+  async (req: Request, res: Response) => {
+    const delivery_id = Number(req.params.delivery_id);
+    const body = req.body as UpdateDeliveryDTO;
+    const delivery = await updateDelivery({ delivery_id }, body);
 
-  const delivery = await updateDelivery(params, body);
-  if (!delivery) return sendNotFound(res, 'Delivery');
+    if (!delivery) {
+      return sendResponse({ res, entity: 'Delivery', action: 'notFound' });
+    }
 
-  return res.json({ 
-    success: true, 
-    message: 'Delivery updated', 
-    delivery 
-  });
-});
+    const updatedFields = Object.keys(body).reduce<Record<string, any>>((acc, key) => {
+      if ((body as any)[key] !== undefined) acc[key] = (delivery as any)[key];
+      return acc;
+    }, {});
+
+    return sendResponse({
+      res,
+      entity: 'Delivery',
+      action: 'updated',
+      data: { delivery, updatedFields },
+    });
+  }
+);
 
 /* --------------------------
    DELETE DELIVERY
 -------------------------- */
-export const deleteDeliveryUsingDelete = catchAsync(async (req: Request, res: Response) => {
-  const params = req.params as unknown as DeliveryParams;
-  const delivery = await deleteDelivery(params);
-  
-  if (!delivery) return sendNotFound(res, 'Delivery');
-  
-  return res.json({ 
-    success: true, 
-    message: 'Delivery deleted', 
-    delivery 
-  });
-});
+export const deleteDeliveryUsingDelete = asyncHandler(
+  async (req: Request, res: Response) => {
+    const delivery_id = Number(req.params.delivery_id);
+    const delivery = await deleteDelivery({ delivery_id });
+
+    if (!delivery) {
+      return sendResponse({ res, entity: 'Delivery', action: 'notFound' });
+    }
+
+    return sendResponse({
+      res,
+      entity: 'Delivery',
+      action: 'deleted',
+      data: delivery,
+    });
+  }
+);
 
 /* --------------------------
-   GET ALL DELIVERIES FOR A JOB
+   GET DELIVERIES FOR A JOB
 -------------------------- */
-export const getJobDeliveriesUsingGet = catchAsync(async (req: Request, res: Response) => {
-  const job_id = Number(req.params.job_id);
-  const deliveries = await getJobDeliveries(job_id);
-  
-  return res.json({ 
-    success: true, 
-    deliveries, 
-    ...(deliveries.length === 0 && { message: 'No deliveries found for this job' }) 
-  });
-});
+export const getJobDeliveriesUsingGet = asyncHandler(
+  async (req: Request, res: Response) => {
+    const job_id = Number(req.params.job_id);
+
+    if (isNaN(job_id)) {
+      return sendResponse({ res, error: 'Invalid job ID', statusCode: 400 });
+    }
+
+    const deliveries = await getJobDeliveries(job_id);
+
+    return sendResponse({
+      res,
+      entity: 'Job Deliveries',
+      action: 'retrieved',
+      data: deliveries,
+    });
+  }
+);
+
 
 /* --------------------------
-   GET ALL DELIVERIES FOR A SUBSCRIBER
+   GET DELIVERIES FOR A SUBSCRIBER
 -------------------------- */
-export const getSubscriberDeliveriesUsingGet = catchAsync(async (req: Request, res: Response) => {
-  const subscriber_id = Number(req.params.subscriber_id);
-  const deliveries = await getSubscriberDeliveries(subscriber_id);
-  
-  return res.json({ 
-    success: true, 
-    deliveries, 
-    ...(deliveries.length === 0 && { message: 'No deliveries found for this subscriber' }) 
-  });
-});
+export const getSubscriberDeliveriesUsingGet = asyncHandler(
+  async (req: Request, res: Response) => {
+    const subscriber_id = Number(req.params.subscriber_id);
+
+    if (isNaN(subscriber_id)) {
+      return sendResponse({ res, error: 'Invalid subscriber ID', statusCode: 400 });
+    }
+
+    const deliveries = await getSubscriberDeliveries(subscriber_id);
+
+    return sendResponse({
+      res,
+      entity: 'Subscriber Deliveries',
+      action: 'retrieved',
+      data: deliveries,
+    });
+  }
+);
